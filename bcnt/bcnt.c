@@ -16,20 +16,27 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "OCUnusedMacroInspection"
 
-#define dGB ((Word64)1073741824)
-#define dMB ((Word64)1048576)
-#define dKB ((Word64)1024)
-#define dBt ((Word64)1)
+#define ANSI_POSITION "\e7\e[%dG%s\e8"
+#define ANSI_VALUES   "\e[33m%6.1f\e[36m%s"
 
-#define dStringBufferSize (128)
+#define dGB (Word64)1073741824
+#define dMB (Word64)1048576
+#define dKB (Word64)1024
+#define dBt (Word64)1
+
+#define qGB "GB"
+#define qMB "MB"
+#define qKB "KB"
+#define qBt "B "
+
+#define dStringBufferSize 128
 #define dByteBufferSize   (dKB * 512)
 
-#define P1(v, s)    (prt(((v) / ((Double)(d##s))), #s))
-#define P2(v, s, m) ((v >= d##s) ? P1(v, s) : m)
-#define ATOI(s)     ((int)(abs(atoi(((pChar)(s))))))
-#define Z(a, b, c)  ((a)?ATOI(b):(c))
-#define CF          ("-c")
-#define CFL         ((size_t)(strlen((CF))))
+#define CF                 "-c"
+#define P1(v, s)           prt(v/(Double)d##s,q##s)
+#define P2(v, s, m)        ((v >= d##s)?P1(v, s):m)
+#define StrEql(s1, s2)     (strcmp(s1, s2) == 0)
+#define StrNEq(s1, s2, ln) (strncmp(s1, s2, ln) == 0)
 
 #ifndef GR_INLINE
 	#define GR_INLINE static __inline__ __attribute__((__always_inline__))
@@ -45,22 +52,26 @@ pByte byteBuffer;
 pChar stringBuffer;
 
 GR_INLINE pChar prt(Double c, pChar const u) {
-	sprintf(stringBuffer, "\e[33m%6.1f\e[36m%s", c, u);
+	sprintf(stringBuffer, ANSI_VALUES, c, u);
 	return stringBuffer;
 }
 
-GR_INLINE Word interpretParameter(pChar const args1, pChar const args2) {
-	return ((strcmp(CF, args1) == 0) ? Z(args2, args2, 1) : Z(strncmp(CF, args1, CFL) == 0, args1 + 2, 0));
-}
-
 GR_INLINE Word findColumnParameter(Word argc, pChar const argv[]) {
-	Word argc1 = (argc - 1), column = 0;
+	Word   argi = 0;
+	size_t cfl  = strlen(CF);
 
-	for(Word argi = 0; ((column == 0) && (argi < argc)); argi++) {
-		column = interpretParameter(argv[argi], ((argi < argc1) ? argv[argi + 1] : NULL));
+	while(argi < argc) {
+		pChar pstr = argv[argi++];
+
+		if(StrEql(CF, pstr)) {
+			return (argi < argc ? (Word)abs(atoi(argv[argi])) : 1);
+		}
+		else if(StrNEq(CF, pstr, cfl)) {
+			return (Word)abs(atoi(pstr + cfl));
+		}
 	}
 
-	return column;
+	return 0;
 }
 
 GR_INLINE Word writeBlock(pByte bytes, ssize_t writeCount) {
@@ -86,15 +97,15 @@ Word main(Word argc, pChar const argv[]) {
 	byteBuffer   = (pByte)malloc((size_t)dByteBufferSize);
 	stringBuffer = (pChar)malloc((size_t)dStringBufferSize);
 
-	Word    tb = ((findColumnParameter(argc, argv) * 9) + 2);
-	Word    we = 0;
 	Word64  tc = 0;
+	Word    we = 0;
+	Word    tb = ((findColumnParameter(argc, argv) * 9) + 2);
 	ssize_t re = readBlock(byteBuffer, dByteBufferSize);
 
 	while(re > 0 && we == 0) {
 		if((we = writeBlock(byteBuffer, re)) == 0) {
 			tc += re;
-			fprintf(stderr, "\e7\e[%dG%s\e8", tb, P2(tc, GB, P2(tc, MB, P2(tc, KB, P1(tc, Bt)))));
+			fprintf(stderr, ANSI_POSITION, tb, P2(tc, GB, P2(tc, MB, P2(tc, KB, P1(tc, Bt)))));
 			re = readBlock(byteBuffer, dByteBufferSize);
 		}
 	}
@@ -103,7 +114,7 @@ Word main(Word argc, pChar const argv[]) {
 		we = errno;
 	}
 
-	fputs("\n", stderr);
+	fputs("\e[36m\e[0m", stderr);
 	fsync(STDOUT_FILENO);
 	free(byteBuffer);
 	free(stringBuffer);
